@@ -1,0 +1,70 @@
+// Annuity Data Preparation - Power Query (M)
+// Source: Raw_Annuity_Data (50,000 policies) -> Formatted_Data
+// Valuation date: 31 March 2026
+
+let
+    Source = Excel.CurrentWorkbook(){[Name="Raw_Annuity_Data"]}[Content],
+
+    // 1) Convert date columns to Date type
+    datetype = Table.TransformColumnTypes(Source, {{"Date of Birth", type date},
+                {"Policy Start Date" , type date}, {"Update Date" , type date}}),
+
+    // 2) Remove duplicate Policy IDs, keeping the latest Update Date
+    SortedDupe = Table.Buffer(Table.Sort(datetype, {"Update Date", Order.Descending})),
+    RemovedDupe = Table.Distinct(SortedDupe, {"Policy ID"}),
+
+    // 3) Rename columns
+    RenamedCols = Table.RenameColumns(RemovedDupe, {
+        {"Policy ID", "PolicyID"},
+        {"Customer ID", "CustomerID"},
+        {"Date of Birth", "DateOfBirth"},
+        {"Annuity Type", "AnnuityType"},
+        {"Policy Start Date", "PolicyStartDate"},
+        {"Premium Amount", "PremiumAmount"},
+        {"Annual Payment", "AnnualPayment"},
+        {"Payment Frequency", "PaymentFrequency"},
+        {"Guarantee Period (Years)", "GuaranteePeriodYears"},
+        {"Update Date", "UpdateDate"}
+    }),
+
+    // 4) Add ValuationDate
+    AddedValuationDate = Table.AddColumn(RenamedCols, "ValuationDate",
+        each #date(2026, 3, 31), type date),
+
+    // 5) Age at valuation date
+    AddedAge = Table.AddColumn(AddedValuationDate, "AgeAtValuationDate",
+        each Number.Round(
+            Duration.TotalDays([ValuationDate] - [DateOfBirth]) / 365.25
+        , 0), Int64.Type),
+
+    // 6) Payment per period
+    AddedPayPerPeriod = Table.AddColumn(AddedAge, "PaymentPerPeriod",
+        each if [PaymentFrequency] = "Annual" then [AnnualPayment] / 1
+             else if [PaymentFrequency] = "Semi-Annual" then [AnnualPayment] / 2
+             else if [PaymentFrequency] = "Quarterly" then [AnnualPayment] / 4
+             else if [PaymentFrequency] = "Monthly" then [AnnualPayment] / 12
+             else null
+        , type number),
+
+    // 7) Risk band (50-60 Low, 61-75 Medium, 76+ High)
+    AddedRiskBand = Table.AddColumn(AddedPayPerPeriod, "RiskBand", each
+        if [AgeAtValuationDate] >= 76 then "High"
+        else if [AgeAtValuationDate] >= 61 then "Medium"
+        else if [AgeAtValuationDate] >= 50 then "Low"
+        else null),
+
+    // 8) Column order
+    ReorderedCols = Table.ReorderColumns(AddedRiskBand, {
+        "PolicyID", "CustomerID", "DateOfBirth", "AgeAtValuationDate", "Gender",
+        "AnnuityType", "PolicyStartDate", "PremiumAmount", "AnnualPayment",
+        "PaymentFrequency", "PaymentPerPeriod", "Country", "RiskBand", "UpdateDate"
+    }),
+
+    // 9) Sort by PolicyID ascending
+    policyasc = Table.Sort(ReorderedCols, {"PolicyID", Order.Ascending}),
+
+    // Remove helper columns
+    #"Removed Columns" = Table.RemoveColumns(policyasc,
+        {"Annuitant Name", "GuaranteePeriodYears", "ValuationDate"})
+in
+    #"Removed Columns"

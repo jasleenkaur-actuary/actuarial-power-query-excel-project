@@ -1,0 +1,35 @@
+// GI Task 1: Raw_Actuarial_GI_Data -> Formated_GI_Data
+// Unpivots Dev_12 / Dev_24 / Dev_36 columns into rows
+
+let
+    Source = Excel.CurrentWorkbook(){[Name="Raw_Actuarial_GI_Data"]}[Content],
+
+    TypedData = Table.TransformColumnTypes(Source, {
+        {"LOB", type text},
+        {"Accident_Year", Int64.Type},
+        {"Region_Code", type text},
+        {"Dev_12", Int64.Type},
+        {"Dev_24", Int64.Type},
+        {"Dev_36", Int64.Type}
+    }),
+
+    RenamedCols = Table.RenameColumns(TypedData, {
+        {"LOB", "Line of Business"},
+        {"Accident_Year", "Accident Year"},
+        {"Region_Code", "Region"}
+    }),
+
+    Unpivoted = Table.UnpivotOtherColumns(
+        RenamedCols,
+        {"Line of Business", "Accident Year", "Region"},
+        "Development Period",
+        "Incurred Loss Amount"
+    ),
+
+    // "Dev_12" becomes the number 12
+    ExtractedPeriod = Table.TransformColumns(
+        Unpivoted,
+        {{"Development Period", each Number.FromText(Text.AfterDelimiter(_, "_")), Int64.Type}}
+    )
+in
+    ExtractedPeriod

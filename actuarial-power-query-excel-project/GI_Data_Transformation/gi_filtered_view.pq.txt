@@ -1,0 +1,15 @@
+// GI Task 2: Filter Formated_GI_Data by the Line of Business
+// and Region selected in the sheet cells (SelectedLOB, SelectedRegion)
+
+let
+    SelectedLOB = Excel.CurrentWorkbook(){[Name="SelectedLOB"]}[Content]{0}[Column1],
+
+    SelectedRegion = Excel.CurrentWorkbook(){[Name="SelectedRegion"]}[Content]{0}[Column1],
+
+    FilteredData = Table.SelectRows(
+        Formated_GI_Data,
+        each Text.Trim([#"Line of Business"]) = Text.Trim(SelectedLOB)
+        and Text.Trim([Region]) = Text.Trim(SelectedRegion)
+    )
+in
+    FilteredData
